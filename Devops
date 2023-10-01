@@ -1,0 +1,99 @@
+import requests
+import base64
+import json
+import re
+import html
+import nltk
+from sumy.parsers.html import HtmlParser
+from sumy.nlp.tokenizers import Tokenizer
+from sumy.summarizers.lex_rank import LexRankSummarizer
+import google.generativeai as palm
+from summa import summarizer
+
+# Replace 'YOUR_PAT' with your Personal Access Token
+pat = 'yd6xeasv5rek75orq5hjgbo5jvovjzom33rkw53puorpzlnyrsnq'
+
+# Encode the PAT to use in the Authorization header
+authorization = base64.b64encode(bytes(':' + pat, 'ascii')).decode('ascii')
+
+# Set up the headers with the Authorization token
+headers = {
+    'Accept': 'application/json',
+    'Authorization': 'Basic ' + authorization
+}
+
+# Replace the URL with the correct one for your work item
+url = "https://dev.azure.com/BFLDevOpsOrg/IT_Adhoc_Projects/_apis/wit/workitems/3698175?api-version=6.0"
+
+# Make the GET request
+response = requests.get(url, headers=headers)
+
+# Check the HTTP status code
+if response.status_code == 200:
+    data = response.json()
+
+    # Helper function to clean HTML content using regular expressions
+    def clean_html(html_content):
+        if isinstance(html_content, str):
+            cleanr = re.compile('<.*?>')
+            cleantext = re.sub(cleanr, '', html_content)
+            return cleantext
+        else:
+            return html_content
+
+    # Clean HTML content for all fields in the JSON data
+    cleaned_data = {}
+    for field, value in data.get("fields", {}).items():
+        cleaned_data[field] = clean_html(value)
+
+    # Add non-field data to the cleaned data dictionary
+    cleaned_data["id"] = data.get("id", "")
+
+    # Extract specific fields from the cleaned JSON data
+    title = cleaned_data.get("System.Title", "")
+    description = cleaned_data.get("System.Description", "")
+    acceptance_criteria = cleaned_data.get("Microsoft.VSTS.Common.AcceptanceCriteria", "")
+    so_that = cleaned_data.get("Custom.SoThat", "")
+
+    # Concatenate the selected fields into a single text
+    text_to_summarize = f"Title: {title}\nDescription: {description}\nAcceptance Criteria: {acceptance_criteria}\nSo That: {so_that}\n"
+
+    # Set the ratio of summarization (adjust as needed)
+    summary_ratio = 10  # You can experiment with this value
+
+    # Generate the summary
+    summary = summarizer.summarize(text_to_summarize, ratio=summary_ratio)
+
+    # Print or save the summary as needed
+    #print("User Story Summary:")
+    #print(summary)
+
+    import pprint
+    import google.generativeai as palm
+
+    palm.configure(api_key='AIzaSyDInDt4IwsWJhdn-gh4hskidmX6q0MeHhQ')
+    models = [m for m in palm.list_models() if 'generateText' in m.supported_generation_methods]
+    model = models[0].name
+    print(model)
+
+    # Assuming you have the result stored in the 'result' variable
+    result = f"Title: {title}\nDescription: {description}\nAcceptance Criteria: {acceptance_criteria}\nSo That: {so_that}\n"
+
+    # Additional prompt commands
+    additional_prompt = "explain this user story in simple english"
+
+    # Combine the result and additional_prompt into the 'prompt' variable
+    prompt = f"{result}\n{additional_prompt}"
+
+    completion = palm.generate_text(
+        model=model,
+        prompt=prompt,
+        temperature=0,
+        # The maximum length of the response
+        max_output_tokens=800,
+    )
+
+    print(completion.result)
+
+else:
+    print("Request failed with status code:", response.status_code)
